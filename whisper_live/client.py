@@ -1,4 +1,5 @@
 import os
+import threading
 import shutil
 import wave
 
@@ -30,20 +31,22 @@ class Client:
         model="small",
         srt_file_path="output.srt",
         use_vad=True,
-        log_transcription=True
+        log_transcription=True,
+        event=None
     ):
         """
         Initializes a Client instance for audio recording and streaming to a server.
 
         If host and port are not provided, the WebSocket connection will not be established.
         When translate is True, the task will be set to "translate" instead of "transcribe".
-        he audio recording starts immediately upon initialization.
+        The audio recording starts immediately upon initialization.
 
         Args:
             host (str): The hostname or IP address of the server.
             port (int): The port number for the WebSocket server.
             lang (str, optional): The selected language for transcription. Default is None.
             translate (bool, optional): Specifies if the task is translation. Default is False.
+            event (threading.Event, optional): The event to signal when a segment is received. Default is None.
         """
         self.recording = False
         self.task = "transcribe"
@@ -59,6 +62,7 @@ class Client:
         self.last_segment = None
         self.last_received_segment = None
         self.log_transcription = log_transcription
+        self.event = event
 
         if translate:
             self.task = "translate"
@@ -118,6 +122,9 @@ class Client:
         if self.last_received_segment is None or self.last_received_segment != segments[-1]["text"]:
             self.last_response_received = time.time()
             self.last_received_segment = segments[-1]["text"]
+        
+        if self.event:
+            self.event.set()
 
         if self.log_transcription:
             # Truncate to last 3 entries for brevity.
@@ -681,8 +688,9 @@ class TranscriptionClient(TranscriptionTeeClient):
         output_recording_filename="./output_recording.wav",
         output_transcription_path="./output.srt",
         log_transcription=True,
+        event=None
     ):
-        self.client = Client(host, port, lang, translate, model, srt_file_path=output_transcription_path, use_vad=use_vad, log_transcription=log_transcription)
+        self.client = Client(host, port, lang, translate, model, srt_file_path=output_transcription_path, use_vad=use_vad, log_transcription=log_transcription, event=event)
         if save_output_recording and not output_recording_filename.endswith(".wav"):
             raise ValueError(f"Please provide a valid `output_recording_filename`: {output_recording_filename}")
         if not output_transcription_path.endswith(".srt"):
