@@ -63,6 +63,7 @@ class Client:
         self.last_received_segment = None
         self.log_transcription = log_transcription
         self.event = event
+        self.start_time = time.time() # start time of the client
 
         if translate:
             self.task = "translate"
@@ -108,19 +109,19 @@ class Client:
 
     def process_segments(self, segments):
         """Processes transcript segments."""
-        self.text = []
+        text = []
         for i, seg in enumerate(segments):
-            if not self.text or self.text[-1] != seg["text"]:
-                self.text.append(seg["text"])
-                # signal event if set
-                if self.event:
-                    self.event.set()
+            if not text or text[-1] != seg["text"]:
+                text.append(seg["text"])
                 if i == len(segments) - 1:
                     self.last_segment = seg
                 elif (self.server_backend == "faster_whisper" and
                       (not self.transcript or
                         float(seg['start']) >= float(self.transcript[-1]['end']))):
                     self.transcript.append(seg)
+                # signal event if set
+                if self.event:
+                    self.event.set()
         # update last received segment and last valid response time
         if self.last_received_segment is None or self.last_received_segment != segments[-1]["text"]:
             self.last_response_received = time.time()
@@ -128,8 +129,9 @@ class Client:
         
         if self.log_transcription:
             # Truncate to last 3 entries for brevity.
+            text = text[-3:]
             utils.clear_screen()
-            utils.print_transcript(self.text[-3:])
+            utils.print_transcript(text)
 
     def on_message(self, ws, message):
         """
