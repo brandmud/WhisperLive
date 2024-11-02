@@ -35,6 +35,8 @@ class Client:
         srt_file_path="output.srt",
         use_vad=True,
         log_transcription=True,
+        max_clients=4,
+        max_connection_time=600,
         event=None
     ):
         """
@@ -65,6 +67,8 @@ class Client:
         self.last_segment = None
         self.last_received_segment = None
         self.log_transcription = log_transcription
+        self.max_clients = max_clients
+        self.max_connection_time = max_connection_time
         self.event = event
         self.start_time = time.time() # start time of the client
 
@@ -210,7 +214,9 @@ class Client:
                     "language": self.language,
                     "task": self.task,
                     "model": self.model,
-                    "use_vad": self.use_vad
+                    "use_vad": self.use_vad,
+                    "max_clients": self.max_clients,
+                    "max_connection_time": self.max_connection_time,
                 }
             )
         )
@@ -692,9 +698,16 @@ class TranscriptionClient(TranscriptionTeeClient):
         output_recording_filename="./output_recording.wav",
         output_transcription_path="./output.srt",
         log_transcription=True,
-        event=None
+        event=None,
+        max_clients=4,
+        max_connection_time=600
     ):
-        self.client = Client(host, port, lang, translate, model, srt_file_path=output_transcription_path, use_vad=use_vad, log_transcription=log_transcription, event=event)
+        self.client = Client(
+            host, port, lang, translate, model, srt_file_path=output_transcription_path,
+            use_vad=use_vad, log_transcription=log_transcription, event=event, max_clients=max_clients,
+            max_connection_time=max_connection_time
+        )
+
         if save_output_recording and not output_recording_filename.endswith(".wav"):
             raise ValueError(f"Please provide a valid `output_recording_filename`: {output_recording_filename}")
         if not output_transcription_path.endswith(".srt"):
