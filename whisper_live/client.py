@@ -6,7 +6,6 @@ import wave
 import logging
 import numpy as np
 import pyaudio
-import threading
 import json
 import websocket
 import uuid
@@ -50,7 +49,7 @@ class Client:
             port (int): The port number for the WebSocket server.
             lang (str, optional): The selected language for transcription. Default is None.
             translate (bool, optional): Specifies if the task is translation. Default is False.
-            event (threading.Event, optional): The event to signal when a segment is received. Default is None.
+            event (Event, optional): The event to signal when a segment is received. Default is None.
         """
         self.recording = False
         self.task = "transcribe"
