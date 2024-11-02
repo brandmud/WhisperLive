@@ -18,8 +18,8 @@ try:
 except Exception:
     pass
 
-logging.basicConfig(level=logging.INFO)
-
+# Configure logging to send output to a file
+logger = logging.getLogger(__name__)
 
 class ClientManager:
     def __init__(self, max_clients=4, max_connection_time=600):
@@ -119,7 +119,7 @@ class ClientManager:
         elapsed_time = time.time() - self.start_times[websocket]
         if elapsed_time >= self.max_connection_time:
             self.clients[websocket].disconnect()
-            logging.warning(f"Client with uid '{self.clients[websocket].client_uid}' disconnected due to overtime.")
+            logger.warning(f"Client with uid '{self.clients[websocket].client_uid}' disconnected due to overtime.")
             return True
         return False
 
@@ -169,9 +169,9 @@ class TranscriptionServer:
                     model=whisper_tensorrt_path,
                     single_model=self.single_model,
                 )
-                logging.info("Running TensorRT backend.")
+                logger.info("Running TensorRT backend.")
             except Exception as e:
-                logging.error(f"TensorRT-LLM not supported: {e}")
+                logger.error(f"TensorRT-LLM not supported: {e}")
                 self.client_uid = options["uid"]
                 websocket.send(json.dumps({
                     "uid": self.client_uid,
@@ -183,7 +183,7 @@ class TranscriptionServer:
 
         if self.backend.is_faster_whisper():
             if faster_whisper_custom_model_path is not None and os.path.exists(faster_whisper_custom_model_path):
-                logging.info(f"Using custom model {faster_whisper_custom_model_path}")
+                logger.info(f"Using custom model {faster_whisper_custom_model_path}")
                 options["model"] = faster_whisper_custom_model_path
             client = ServeClientFasterWhisper(
                 websocket,
@@ -196,7 +196,7 @@ class TranscriptionServer:
                 use_vad=self.use_vad,
                 single_model=self.single_model,
             )
-            logging.info("Running faster_whisper backend.")
+            logger.info("Running faster_whisper backend.")
 
         if client is None:
             raise ValueError(f"Backend type {self.backend.value} not recognised or not handled.")
@@ -221,7 +221,7 @@ class TranscriptionServer:
     def handle_new_connection(self, websocket, faster_whisper_custom_model_path,
                               whisper_tensorrt_path, trt_multilingual):
         try:
-            logging.info("New client connected")
+            logger.info("New client connected")
             options = websocket.recv()
             options = json.loads(options)
             self.use_vad = options.get('use_vad')
@@ -235,13 +235,13 @@ class TranscriptionServer:
                                    whisper_tensorrt_path, trt_multilingual)
             return True
         except json.JSONDecodeError:
-            logging.error("Failed to decode JSON from client")
+            logger.error("Failed to decode JSON from client")
             return False
         except ConnectionClosed:
-            logging.info("Connection closed by client")
+            logger.info("Connection closed by client")
             return False
         except Exception as e:
-            logging.error(f"Error during new connection initialization: {str(e)}")
+            logger.error(f"Error during new connection initialization: {str(e)}")
             return False
 
     def process_audio_frames(self, websocket):
@@ -303,9 +303,9 @@ class TranscriptionServer:
                 if not self.process_audio_frames(websocket):
                     break
         except ConnectionClosed:
-            logging.info("Connection closed by client")
+            logger.info("Connection closed by client")
         except Exception as e:
-            logging.error(f"Unexpected error: {str(e)}")
+            logger.error(f"Unexpected error: {str(e)}")
         finally:
             if self.client_manager.get_client(websocket):
                 self.cleanup(websocket)
@@ -333,11 +333,11 @@ class TranscriptionServer:
             raise ValueError(f"TensorRT model '{whisper_tensorrt_path}' is not a valid path.")
         if single_model:
             if faster_whisper_custom_model_path or whisper_tensorrt_path:
-                logging.info("Custom model option was provided. Switching to single model mode.")
+                logger.info("Custom model option was provided. Switching to single model mode.")
                 self.single_model = True
                 # TODO: load model initially
             else:
-                logging.info("Single model mode currently only works with custom models.")
+                logger.info("Single model mode currently only works with custom models.")
         if not BackendType.is_valid(backend):
             raise ValueError(f"{backend} is not a valid backend type. Choose backend from {BackendType.valid_types()}")
         with serve(
@@ -547,7 +547,7 @@ class ServeClientBase(object):
                 })
             )
         except Exception as e:
-            logging.error(f"[ERROR]: Sending data to client: {e}")
+            logger.error(f"[ERROR]: Sending data to client: {e}")
 
     def disconnect(self):
         """
@@ -571,7 +571,7 @@ class ServeClientBase(object):
         associated with the transcription process.
 
         """
-        logging.info("Cleaning up.")
+        logger.info("Cleaning up.")
         self.exit = True
 
 
@@ -643,7 +643,7 @@ class ServeClientTensorRT(ServeClientBase):
         Args:
             warmup_steps (int): Number of steps to warm up the model for.
         """
-        logging.info("[INFO:] Warming up TensorRT engine..")
+        logger.info("[INFO:] Warming up TensorRT engine..")
         mel, _ = self.transcriber.log_mel_spectrogram("assets/jfk.flac")
         for i in range(warmup_steps):
             self.transcriber.transcribe(mel)
@@ -682,7 +682,7 @@ class ServeClientTensorRT(ServeClientBase):
         """
         if ServeClientTensorRT.SINGLE_MODEL:
             ServeClientTensorRT.SINGLE_MODEL_LOCK.acquire()
-        logging.info(f"[WhisperTensorRT:] Processing audio with duration: {input_bytes.shape[0] / self.RATE}")
+        logger.info(f"[WhisperTensorRT:] Processing audio with duration: {input_bytes.shape[0] / self.RATE}")
         mel, duration = self.transcriber.log_mel_spectrogram(input_bytes)
         last_segment = self.transcriber.transcribe(
             mel,
@@ -726,7 +726,7 @@ class ServeClientTensorRT(ServeClientBase):
         """
         while True:
             if self.exit:
-                logging.info("Exiting speech to text thread")
+                logger.info("Exiting speech to text thread")
                 break
 
             if self.frames_np is None:
@@ -741,11 +741,11 @@ class ServeClientTensorRT(ServeClientBase):
 
             try:
                 input_sample = input_bytes.copy()
-                logging.info(f"[WhisperTensorRT:] Processing audio with duration: {duration}")
+                logger.info(f"[WhisperTensorRT:] Processing audio with duration: {duration}")
                 self.transcribe_audio(input_sample)
 
             except Exception as e:
-                logging.error(f"[ERROR]: {e}")
+                logger.error(f"[ERROR]: {e}")
 
 
 class ServeClientFasterWhisper(ServeClientBase):
@@ -795,7 +795,7 @@ class ServeClientFasterWhisper(ServeClientBase):
 
         if self.model_size_or_path is None:
             return
-        logging.info(f"Using Device={device} with precision {self.compute_type}")
+        logger.info(f"Using Device={device} with precision {self.compute_type}")
 
         if single_model:
             if ServeClientFasterWhisper.SINGLE_MODEL is None:
@@ -867,7 +867,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         """
         if info.language_probability > 0.5:
             self.language = info.language
-            logging.info(f"Detected language {self.language} with probability {info.language_probability}")
+            logger.info(f"Detected language {self.language} with probability {info.language_probability}")
             self.websocket.send(json.dumps(
                 {"uid": self.client_uid, "language": self.language, "language_prob": info.language_probability}))
 
@@ -969,7 +969,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         """
         while True:
             if self.exit:
-                logging.info("Exiting speech to text thread")
+                logger.info("Exiting speech to text thread")
                 break
 
             if self.frames_np is None:
@@ -992,7 +992,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                 self.handle_transcription_output(result, duration)
 
             except Exception as e:
-                logging.error(f"[ERROR]: Failed to transcribe audio chunk: {e}")
+                logger.error(f"[ERROR]: Failed to transcribe audio chunk: {e}")
                 time.sleep(0.01)
 
     def format_segment(self, start, end, text):

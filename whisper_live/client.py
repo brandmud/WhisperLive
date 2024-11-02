@@ -15,6 +15,10 @@ import ffmpeg
 import whisper_live.utils as utils
 
 
+# Configure logging
+logger = logging.getLogger(__name__)
+
+
 class Client:
     """
     Handles communication with a server using WebSocket.
@@ -82,7 +86,7 @@ class Client:
                 ),
             )
         else:
-            print("[ERROR]: No host or port specified.")
+            logger.error("No host or port specified.")
             return
 
         Client.INSTANCES[self.uid] = self
@@ -93,19 +97,19 @@ class Client:
         self.ws_thread.start()
 
         self.transcript = []
-        print("[INFO]: * recording")
+        logger.info(' * recording')
 
     def handle_status_messages(self, message_data):
         """Handles server status messages."""
         status = message_data["status"]
         if status == "WAIT":
             self.waiting = True
-            print(f"[INFO]: Server is full. Estimated wait time {round(message_data['message'])} minutes.")
+            logger.info(f"Server is full. Estimated wait time {round(message_data['message'])} minutes.")
         elif status == "ERROR":
-            print(f"Message from Server: {message_data['message']}")
+            logger.error(f"Message from Server: {message_data['message']}")
             self.server_error = True
         elif status == "WARNING":
-            print(f"Message from Server: {message_data['message']}")
+            logger.warning(f"Message from Server: {message_data['message']}")
 
     def process_segments(self, segments):
         """Processes transcript segments."""
@@ -149,7 +153,7 @@ class Client:
         message = json.loads(message)
 
         if self.uid != message.get("uid"):
-            print("[ERROR]: invalid client uid")
+            logger.error("Invalid client uid")
             return
 
         if "status" in message.keys():
@@ -157,21 +161,21 @@ class Client:
             return
 
         if "message" in message.keys() and message["message"] == "DISCONNECT":
-            print("[INFO]: Server disconnected due to overtime.")
+            logger.info("Server disconnected due to overtime.")
             self.recording = False
 
         if "message" in message.keys() and message["message"] == "SERVER_READY":
             self.last_response_received = time.time()
             self.recording = True
             self.server_backend = message["backend"]
-            print(f"[INFO]: Server Running with backend {self.server_backend}")
+            logger.info(f"Server Running with backend {self.server_backend}")
             return
 
         if "language" in message.keys():
             self.language = message.get("language")
             lang_prob = message.get("language_prob")
-            print(
-                f"[INFO]: Server detected language {self.language} with probability {lang_prob}"
+            logger.info(
+                f"Server detected language {self.language} with probability {lang_prob}"
             )
             return
 
@@ -179,12 +183,12 @@ class Client:
             self.process_segments(message["segments"])
 
     def on_error(self, ws, error):
-        print(f"[ERROR] WebSocket Error: {error}")
+        logger.error(f"WebSocket Error: {error}")
         self.server_error = True
         self.error_message = error
 
     def on_close(self, ws, close_status_code, close_msg):
-        print(f"[INFO]: Websocket connection closed: {close_status_code}: {close_msg}")
+        logger.info(f"Websocket connection closed: {close_status_code}: {close_msg}")
         self.recording = False
         self.waiting = False
 
@@ -199,7 +203,7 @@ class Client:
             ws (websocket.WebSocketApp): The WebSocket client instance.
 
         """
-        print("[INFO]: Opened connection")
+        logger.info('Opened connection')
         ws.send(
             json.dumps(
                 {
@@ -223,7 +227,7 @@ class Client:
         try:
             self.client_socket.send(message, websocket.ABNF.OPCODE_BINARY)
         except Exception as e:
-            print(e)
+            logger.error(e)
 
     def close_websocket(self):
         """
@@ -236,12 +240,12 @@ class Client:
         try:
             self.client_socket.close()
         except Exception as e:
-            print("[ERROR]: Error closing WebSocket:", e)
+            logger.error("Error closing WebSocket:", e)
 
         try:
             self.ws_thread.join()
         except Exception as e:
-            print("[ERROR:] Error joining WebSocket thread:", e)
+            logger.error("Error joining WebSocket thread:", e)
 
     def get_client_socket(self):
         """
@@ -307,7 +311,7 @@ class TranscriptionTeeClient:
                 frames_per_buffer=self.chunk,
             )
         except OSError as error:
-            print(f"[WARN]: Unable to access microphone. {error}")
+            logger.warning(f"Unable to access microphone. {error}")
             self.stream = None
 
     def __call__(self, audio=None, rtsp_url=None, hls_url=None, save_file=None):
@@ -326,14 +330,14 @@ class TranscriptionTeeClient:
             source is not None for source in [audio, rtsp_url, hls_url]
         ) <= 1, 'You must provide only one selected source'
 
-        print("[INFO]: Waiting for server ready ...")
+        logger.info("Waiting for server ready ...")
         for client in self.clients:
             while not client.recording:
                 if client.waiting or client.server_error:
                     self.close_all_clients()
                     return
 
-        print("[INFO]: Server Ready!")
+        logger.info("Server Ready!")
         if hls_url is not None:
             self.process_hls_stream(hls_url, save_file)
         elif audio is not None:
@@ -417,7 +421,7 @@ class TranscriptionTeeClient:
                 self.p.terminate()
                 self.close_all_clients()
                 self.write_all_clients_srt()
-                print("[INFO]: Keyboard interrupt.")
+                logger.info("Keyboard interrupt.")
 
     def process_rtsp_stream(self, rtsp_url):
         """
@@ -441,7 +445,7 @@ class TranscriptionTeeClient:
         self.handle_ffmpeg_process(process, stream_type='HLS')
 
     def handle_ffmpeg_process(self, process, stream_type):
-        print(f"[INFO]: Connecting to {stream_type} stream...")
+        logger.info(f"Connecting to {stream_type} stream...")
         stderr_thread = threading.Thread(target=self.consume_stderr, args=(process,))
         stderr_thread.start()
         try:
@@ -454,14 +458,14 @@ class TranscriptionTeeClient:
                 self.multicast_packet(audio_array.tobytes())
 
         except Exception as e:
-            print(f"[ERROR]: Failed to connect to {stream_type} stream: {e}")
+            logger.error(f"Error processing {stream_type} stream: {e}")
         finally:
             self.close_all_clients()
             self.write_all_clients_srt()
             if process:
                 process.kill()
 
-        print(f"[INFO]: {stream_type} stream processing finished.")
+        logger.info(f"{stream_type} stream processing finished.")
 
     def get_rtsp_ffmpeg_process(self, rtsp_url):
         return (
@@ -498,7 +502,7 @@ class TranscriptionTeeClient:
             process (subprocess.Popen): The process whose stderr output will be logged.
         """
         for line in iter(process.stderr.readline, b""):
-            logging.debug(f'[STDERR]: {line.decode()}')
+            logger.debug(f'[STDERR]: {line.decode()}')
 
     def save_chunk(self, n_audio_file):
         """
