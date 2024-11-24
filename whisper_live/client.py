@@ -116,6 +116,12 @@ class Client:
 
     def process_segments(self, segments):
         """Processes transcript segments."""
+        # store segments in object
+        self.segments = segments
+        # signal event if set
+        if self.event:
+            self.event.set()
+
         text = []
         for i, seg in enumerate(segments):
             if not text or text[-1] != seg["text"]:
@@ -126,9 +132,6 @@ class Client:
                       (not self.transcript or
                         float(seg['start']) >= float(self.transcript[-1]['end']))):
                     self.transcript.append(seg)
-                # signal event if set
-                if self.event:
-                    self.event.set()
         # update last received segment and last valid response time
         if self.last_received_segment is None or self.last_received_segment != segments[-1]["text"]:
             self.last_response_received = time.time()
